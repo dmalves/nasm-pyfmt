@@ -119,9 +119,12 @@ jobs:
           path: release-assets
 
       # Attach files to the release that triggered this workflow; --clobber replaces on re-run.
+      # GH_REPO is required: this job does not check out the repo, so gh cannot
+      # discover the remote from git.
       - name: Attach assets to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           gh release upload "${{ github.event.release.tag_name }}" \
             release-assets/nasm-pyfmt-linux-x86_64 \
