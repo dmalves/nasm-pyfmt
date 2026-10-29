@@ -1,0 +1,129 @@
+# Build standalone executables with PyInstaller and attach them to GitHub Releases.
+#
+# Typical flow:
+#   1. Tag the repo (e.g. v0.1.0) matching pyproject.toml / __version__.
+#   2. Publish a GitHub Release for that tag.
+#   3. This workflow builds on Linux and Windows, then uploads both binaries to the release.
+#
+# workflow_dispatch allows a manual build (artifacts only) without publishing assets.
+
+name: Release
+
+on:
+  # Fires when you click "Publish release" in the GitHub UI (or API), not on draft saves.
+  release:
+    types: [published]
+  # Optional: Actions tab → Release → Run workflow (smoke-test CI builds without a release upload).
+  workflow_dispatch:
+
+# Required for `gh release upload` to attach files to the release created by the same event.
+permissions:
+  contents: write
+
+jobs:
+  # One job per OS; PyInstaller cannot cross-compile, so each platform builds on its native runner.
+  build:
+    strategy:
+      # If Windows fails, still finish Linux (and vice versa) so logs show both outcomes.
+      fail-fast: false
+      matrix:
+        include:
+          # Final asset name users download from the release page (no extension on Linux).
+          - runner: ubuntu-latest
+            asset: nasm-pyfmt-linux-x86_64
+          - runner: windows-latest
+            asset: nasm-pyfmt-windows-x86_64.exe
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # Bash is used for uv/pyinstaller steps on both OSes (Git Bash on Windows runners).
+      - name: Set up Python
+        run: uv python install
+        shell: bash
+
+      # Installs the project plus PyInstaller ([dependency-groups] build in pyproject.toml).
+      - name: Install build dependencies
+        run: uv sync --group build
+        shell: bash
+
+      # Produces dist/nasm-pyfmt or dist/nasm-pyfmt.exe via nasm-pyfmt.spec (one-file console app).
+      - name: Build executable
+        run: uv run pyinstaller nasm-pyfmt.spec --clean --noconfirm
+        shell: bash
+
+      # Verify the bundled binary runs and formats a minimal instruction line.
+      - name: Smoke test (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          ./dist/nasm-pyfmt --version
+          printf '%s\n' 'mov rax,1' | ./dist/nasm-pyfmt | grep -F 'mov rax, 1'
+          # On a real release, tag (v0.1.0) must match the version baked into the executable.
+          if [ "${{ github.event_name }}" = "release" ]; then
+            version="${{ github.event.release.tag_name }}"
+            version="${version#v}"
+            ./dist/nasm-pyfmt --version | grep -F "nasm-pyfmt ${version}"
+          fi
+        shell: bash
+
+      - name: Smoke test (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          & .\dist\nasm-pyfmt.exe --version
+          $out = "mov rax,1" | & .\dist\nasm-pyfmt.exe
+          if ($out -notlike '*mov rax, 1*') { throw "Unexpected formatter output: $out" }
+          if ("${{ github.event_name }}" -eq "release") {
+            $version = "${{ github.event.release.tag_name }}".TrimStart("v")
+            $verOut = & .\dist\nasm-pyfmt.exe --version
+            if ($verOut -notlike "*nasm-pyfmt $version*") { throw "Version mismatch: $verOut" }
+          }
+        shell: pwsh
+
+      # Rename to the public asset filename expected on the release page.
+      - name: Stage release asset (Linux)
+        if: runner.os == 'Linux'
+        run: cp dist/nasm-pyfmt "${{ matrix.asset }}"
+        shell: bash
+
+      - name: Stage release asset (Windows)
+        if: runner.os == 'Windows'
+        run: Copy-Item dist\nasm-pyfmt.exe -Destination "${{ matrix.asset }}"
+        shell: pwsh
+
+      # Intermediate storage until release-assets merges Linux + Windows into one upload step.
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+          if-no-files-found: error
+
+  # Runs only for published releases (skipped for workflow_dispatch-only runs).
+  release-assets:
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      # Pull both platform binaries into a single directory on one runner.
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: nasm-pyfmt-*
+          merge-multiple: true
+          path: release-assets
+
+      # Attach files to the release that triggered this workflow; --clobber replaces on re-run.
+      - name: Attach assets to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            release-assets/nasm-pyfmt-linux-x86_64 \
+            release-assets/nasm-pyfmt-windows-x86_64.exe \
+            --clobber

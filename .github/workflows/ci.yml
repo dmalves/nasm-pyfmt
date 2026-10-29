@@ -1,0 +1,41 @@
+# Continuous integration: lint and test on every push and pull request.
+# Keeps main healthy before a release is published and binaries are built.
+
+name: CI
+
+on:
+  # Any branch push (including main) runs the full check suite.
+  push:
+  # PRs from forks or feature branches are validated the same way as pushes.
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # Source must match the commit that triggered the workflow (not the default branch).
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # uv installs Python, creates .venv, and runs tools with `uv run` (see pyproject.toml).
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          # Reuse downloaded Python wheels and uv cache between workflow runs.
+          enable-cache: true
+
+      # Installs the Python version pinned in .python-version (3.14).
+      - name: Set up Python
+        run: uv python install
+
+      # Dev dependencies: pytest, ruff (see [dependency-groups] dev in pyproject.toml).
+      - name: Install dependencies
+        run: uv sync --dev
+
+      # Static analysis on package and tests (line length and import rules in pyproject.toml).
+      - name: Ruff
+        run: uv run ruff check src tests
+
+      # Unit tests, fixture golden files, and CLI tests (tests/).
+      - name: Pytest
+        run: uv run pytest
