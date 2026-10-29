@@ -1,8 +1,10 @@
 # nasm-pyfmt
 
+![A cute chip mascot lining up NASM assembly](docs/nasm-pyfmt-banner.jpg)
+
 Opinionated formatter for [NASM](https://www.nasm.us/) assembly source code.
 
-Formatting rules follow [nasmfmt](https://github.com/yamnikov-oleg/nasmfmt) (default instruction indent 8, comment column 40).
+Instructions are indented 8 columns, and comments line up at column 40.
 
 ## Requirements
 
@@ -86,8 +88,4 @@ tests/
   release.yml     # PyInstaller builds on release
 ```
 
-Golden expected files match nasmfmt output; regenerate with Go installed:
-
-```bash
-go run github.com/yamnikov-oleg/nasmfmt@latest path/to/file.asm
-```
+Golden files in `tests/fixtures/` are the canonical formatted output (`*.input.asm` is the messy source, `*.expected.asm` is the formatted result).
