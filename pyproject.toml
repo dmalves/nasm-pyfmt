@@ -3,6 +3,8 @@ name = "nasm-pyfmt"
 version = "0.1.0"
 description = "Opinionated formatter for NASM assembly source code"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.14"
 authors = [
     { name = "Daniel de Matos Alves", email = "dmalves.programmer@outlook.com" },

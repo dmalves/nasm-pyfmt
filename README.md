@@ -89,3 +89,7 @@ tests/
 ```
 
 Golden files in `tests/fixtures/` are the canonical formatted output (`*.input.asm` is the messy source, `*.expected.asm` is the formatted result).
+
+## License
+
+nasm-pyfmt is licensed under the [MIT License](LICENSE).
